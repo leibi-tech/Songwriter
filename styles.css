@@ -235,3 +235,28 @@ textarea.tab-edit {
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; z-index: 40;
   font-size: 14px; font-weight: 600; max-width: calc(100% - 32px); text-align: center;
 }
+
+/* ---------- Tabs Songs / Ideen ---------- */
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); margin-bottom: 12px; }
+.tabs button { padding: 10px; border-radius: 9px; font-weight: 650; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.tabs button.on { background: var(--surface-2); color: var(--text); }
+.badge { font-size: 12px; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+.home-actions .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.new-song.alt { background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+.new-song.alt span { color: var(--rec); }
+
+/* ---------- Song-Kopf ---------- */
+.meta-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.pill { padding: 5px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; font-weight: 650; color: var(--accent); }
+.capo-select { padding: 7px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; font-weight: 600; }
+
+/* ---------- Sync ---------- */
+.sync-ind { font-size: 18px; color: var(--muted); }
+.sync-ind.ok { color: var(--ok); }
+.sync-ind.err { color: var(--rec); }
+.sync-ind.busy { color: var(--accent); animation: spin 1s linear infinite; }
+.sync-ind.dim { opacity: 0.45; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sync-box { margin-bottom: 6px; }
+.field label { font-size: 13px; color: var(--muted); }
+.link-btn { margin-top: 10px; font-size: 13px; color: var(--muted); text-decoration: underline; padding: 4px 0; }

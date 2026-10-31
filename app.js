@@ -67,11 +67,12 @@ const DB = {
   open() {
     if (this._db) return Promise.resolve(this._db);
     return new Promise((res, rej) => {
-      const req = indexedDB.open('songwriter', 1);
+      const req = indexedDB.open('songwriter', 2);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains('songs')) db.createObjectStore('songs', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('tombs')) db.createObjectStore('tombs', { keyPath: 'id' });
       };
       req.onsuccess = () => { this._db = req.result; res(this._db); };
       req.onerror = () => rej(req.error);
@@ -95,6 +96,10 @@ const DB = {
   getAudio(id) { return this.tx('audio', 'readonly', (s) => s.get(id)); },
   putAudio(rec) { return this.tx('audio', 'readwrite', (s) => s.put(rec)); },
   deleteAudio(id) { return this.tx('audio', 'readwrite', (s) => s.delete(id)); },
+  allTombs() { return this.tx('tombs', 'readonly', (s) => s.getAll()); },
+  putTomb(t) { return this.tx('tombs', 'readwrite', (s) => s.put(t)); },
+  deleteTomb(id) { return this.tx('tombs', 'readwrite', (s) => s.delete(id)); },
+  allAudioIds() { return this.tx('audio', 'readonly', (s) => s.getAllKeys()); },
 };
 
 /* ---------------- Song-Modell ---------------- */
@@ -102,9 +107,9 @@ const SECTION_TYPES = ['Intro', 'Vers', 'Pre-Chorus', 'Refrain', 'Bridge', 'Solo
 const COMMON_CHORDS = ['C', 'D', 'E', 'F', 'G', 'A', 'Am', 'Dm', 'Em', 'Bm', 'C7', 'D7', 'E7', 'G7', 'A7', 'Fmaj7', 'Cadd9', 'Dsus4', 'Asus2', 'B7', 'F#m', 'Bb', 'H7'];
 const STRINGS = ['e', 'B', 'G', 'D', 'A', 'E'];
 
-function newSong() {
+function newSong(isIdea = false) {
   const now = Date.now();
-  return { id: uid(), title: '', createdAt: now, updatedAt: now, blocks: [{ id: uid(), type: 'text', text: '' }] };
+  return { id: uid(), title: '', isIdea, capo: 0, createdAt: now, updatedAt: now, blocks: [{ id: uid(), type: 'text', text: '' }] };
 }
 
 function makeBlock(type, song, sectionName) {
@@ -141,7 +146,7 @@ function songSnippet(song) {
 }
 
 function songToText(song) {
-  const out = [song.title || 'Ohne Titel', ''];
+  const out = [song.title || 'Ohne Titel', ...(song.capo ? [`Capo ${song.capo}`] : []), ''];
   for (const b of song.blocks) {
     if (b.type === 'text' && b.text.trim()) out.push(b.text.trim(), '');
     if (b.type === 'section') out.push(`[${b.label}]`, chordProToTwoLine(b.text), '');
@@ -489,26 +494,54 @@ document.addEventListener('click', (e) => { if (e.target.id === 'sheet-backdrop'
 /* ---------------- Startseite ---------------- */
 async function renderHome() {
   const app = $('#app');
-  const songs = (await DB.allSongs()).sort((a, b) => b.updatedAt - a.updatedAt);
+  const all = (await DB.allSongs()).sort((a, b) => b.updatedAt - a.updatedAt);
+  let tab = Settings.get('homeTab', 'songs');
   let query = '';
 
   const list = h('ul', { class: 'song-list' });
+  const actions = h('div', { class: 'home-actions' });
+  const tabs = h('div', { class: 'tabs', role: 'tablist' });
+
+  const drawTabs = () => {
+    const nIdeas = all.filter((s) => s.isIdea).length;
+    tabs.innerHTML = '';
+    tabs.append(
+      h('button', { class: tab === 'songs' ? 'on' : '', role: 'tab', onclick: () => { tab = 'songs'; Settings.set('homeTab', tab); draw(); } }, 'Songs'),
+      h('button', { class: tab === 'ideas' ? 'on' : '', role: 'tab', onclick: () => { tab = 'ideas'; Settings.set('homeTab', tab); draw(); } }, 'Ideen', nIdeas ? h('span', { class: 'badge' }, String(nIdeas)) : null));
+  };
+
+  const drawActions = () => {
+    actions.innerHTML = '';
+    if (tab === 'songs') {
+      actions.append(h('button', { class: 'new-song', onclick: () => createSong(false) }, h('span', { style: 'font-size:24px' }, '+'), 'Neuer Song'));
+    } else {
+      actions.append(h('div', { class: 'two' },
+        h('button', { class: 'new-song', onclick: () => createSong(true) }, h('span', { style: 'font-size:22px' }, '✎'), 'Neue Idee'),
+        h('button', { class: 'new-song alt', onclick: () => { Engine.ensure(); createSong(true, true); } }, h('span', { style: 'font-size:20px' }, '●'), 'Sprachmemo')));
+    }
+  };
+
   const fill = () => {
     list.innerHTML = '';
     const q = query.toLowerCase();
-    const shown = songs.filter((s) => !q || (s.title || '').toLowerCase().includes(q) || songToText(s).toLowerCase().includes(q));
+    const pool = all.filter((s) => (tab === 'ideas') === !!s.isIdea);
+    const shown = pool.filter((s) => !q || (s.title || '').toLowerCase().includes(q) || songToText(s).toLowerCase().includes(q));
     if (!shown.length) {
-      list.append(h('li', { class: 'empty' }, songs.length ? 'Nichts gefunden.' : 'Noch keine Songs. Tippe auf „Neuer Song“ und leg los.'));
+      const msg = pool.length ? 'Nichts gefunden.'
+        : tab === 'ideas' ? 'Noch keine Ideen. Halte hier schnell Zeilen oder Melodien fest – später kannst du sie in einen Song verschieben.'
+        : 'Noch keine Songs. Tippe auf „Neuer Song“ und leg los.';
+      list.append(h('li', { class: 'empty' }, msg));
       return;
     }
     for (const s of shown) {
       const counts = { section: 0, tab: 0, audio: 0 };
       s.blocks.forEach((b) => { if (b.type in counts) counts[b.type] += b.type === 'audio' ? b.tracks.length : 1; });
       list.append(h('li', {}, h('button', { class: 'song-item', onclick: () => go('#/song/' + s.id) },
-        h('div', { class: 't' }, s.title || 'Ohne Titel'),
+        h('div', { class: 't' }, s.title || (s.isIdea ? 'Idee' : 'Ohne Titel')),
         songSnippet(s) ? h('div', { class: 's' }, songSnippet(s)) : null,
         h('div', { class: 'm' },
           h('span', {}, fmtDate(s.updatedAt)),
+          s.capo ? h('span', {}, `Capo ${s.capo}`) : null,
           counts.section ? h('span', {}, `${counts.section} Teil${counts.section > 1 ? 'e' : ''}`) : null,
           counts.tab ? h('span', {}, `${counts.tab} Tab${counts.tab > 1 ? 's' : ''}`) : null,
           counts.audio ? h('span', {}, `🎙 ${counts.audio}`) : null,
@@ -516,24 +549,36 @@ async function renderHome() {
     }
   };
 
+  const draw = () => { drawTabs(); drawActions(); fill(); };
+
   app.innerHTML = '';
   app.append(
     h('header', { class: 'topbar' },
       h('h1', {}, 'Songwriter'),
+      syncButton(),
       h('button', { class: 'icon-btn', 'aria-label': 'Einstellungen', onclick: openSettings }, '⚙︎')),
     h('main', {},
-      h('button', { class: 'new-song', onclick: createSong }, h('span', { style: 'font-size:24px' }, '+'), 'Neuer Song'),
-      songs.length ? h('input', { class: 'search', type: 'search', placeholder: 'Suchen…', oninput: (e) => { query = e.target.value; fill(); } }) : null,
+      tabs,
+      actions,
+      h('input', { class: 'search', type: 'search', placeholder: 'Suchen…', oninput: (e) => { query = e.target.value; fill(); } }),
       list)
   );
-  fill();
+  draw();
 }
 
-async function createSong() {
-  const s = newSong();
+async function createSong(isIdea = false, record = false) {
+  const s = newSong(isIdea);
+  let opts = { focusNew: true };
+  if (record) {
+    const b = makeBlock('audio', s);
+    b.label = 'Sprachmemo';
+    s.blocks = [b];
+    opts = { autoRecord: b.id };
+  }
   await DB.putSong(s);
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
-  go('#/song/' + s.id, { focusNew: true });
+  Sync.schedule();
+  go('#/song/' + s.id, opts);
 }
 
 function openSettings() {
@@ -544,14 +589,70 @@ function openSettings() {
     oninput: (e) => { val.textContent = e.target.value + ' ms'; Settings.set('latencyMs', +e.target.value); },
   });
   Sheet.open(h('div', {},
-    h('div', { class: 'sheet-title' }, 'Einstellungen'),
+    h('div', { class: 'sheet-title' }, 'Cloud-Sync'),
+    syncSettings(),
+    h('div', { class: 'sheet-title' }, 'Aufnahme'),
     h('div', { class: 'field' },
       h('label', {}, 'Latenz-Ausgleich für 2. Spur: ', val),
       range,
       h('div', { class: 'hint' }, 'Wenn neue Spuren immer etwas zu spät klingen, Wert erhöhen. Gilt für zukünftige Aufnahmen; jede Spur lässt sich zusätzlich einzeln verschieben.')),
-    h('div', { class: 'hint' }, 'Alle Songs und Aufnahmen bleiben nur auf diesem Gerät gespeichert.'),
     h('div', { class: 'row' }, h('div', { class: 'spacer' }), h('button', { class: 'btn primary', onclick: () => Sheet.close() }, 'Fertig'))
   ));
+}
+
+// Sync-Bereich in den Einstellungen: Verbindung → Anmelden → Status
+function syncSettings() {
+  const box = h('div', { class: 'sync-box' });
+  const draw = () => {
+    box.innerHTML = '';
+    if (!Sync.configured()) {
+      const url = h('input', { placeholder: 'https://xxxx.supabase.co', value: Sync.config().url, autocapitalize: 'off', spellcheck: false });
+      const key = h('input', { placeholder: 'anon public key', value: Sync.config().key, autocapitalize: 'off', spellcheck: false });
+      box.append(
+        h('div', { class: 'hint' }, 'Damit Songs und Aufnahmen auf allen Geräten gleich sind. Einmalig die Supabase-Verbindung eintragen (Anleitung im README).'),
+        h('div', { class: 'field' }, h('label', {}, 'Project URL'), url),
+        h('div', { class: 'field' }, h('label', {}, 'Anon Key'), key),
+        h('div', { class: 'row' }, h('div', { class: 'spacer' }),
+          h('button', { class: 'btn primary', onclick: async () => {
+            if (!url.value.trim() || !key.value.trim()) { toast('Bitte beide Felder ausfüllen'); return; }
+            await Sync.setConfig(url.value.trim(), key.value.trim());
+            draw();
+          } }, 'Verbinden')));
+      return;
+    }
+    if (!Sync.user) {
+      const email = h('input', { type: 'email', placeholder: 'E-Mail', autocomplete: 'email', autocapitalize: 'off' });
+      const pw = h('input', { type: 'password', placeholder: 'Passwort (mind. 6 Zeichen)', autocomplete: 'current-password' });
+      const run = async (fn) => {
+        try { const msg = await fn(email.value.trim(), pw.value); if (msg) toast(msg, 4000); draw(); }
+        catch (e) { toast(e.message || String(e), 4000); }
+      };
+      box.append(
+        h('div', { class: 'hint' }, 'Melde dich an. Auf jedem Gerät mit demselben Konto anmelden.'),
+        h('div', { class: 'field' }, email, pw),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn', onclick: () => run((e, p) => Sync.signUp(e, p)) }, 'Konto erstellen'),
+          h('div', { class: 'spacer' }),
+          h('button', { class: 'btn primary', onclick: () => run((e, p) => Sync.signIn(e, p)) }, 'Anmelden')),
+        h('button', { class: 'link-btn', onclick: () => Sheet.confirm('Verbindung zu Supabase entfernen?', 'Entfernen', () => Sync.setConfig('', '')) }, 'Supabase-Verbindung ändern'));
+      return;
+    }
+    box.append(
+      h('div', { class: 'hint' }, `Angemeldet als ${Sync.user.email}. `, Sync.statusText()),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn small', onclick: async () => { await Sync.signOut(); draw(); } }, 'Abmelden'),
+        h('div', { class: 'spacer' }),
+        h('button', { class: 'btn small primary', onclick: async () => { await Sync.run(); draw(); } }, 'Jetzt synchronisieren')));
+  };
+  draw();
+  return box;
+}
+
+function syncButton() {
+  const b = h('button', { class: 'icon-btn sync-ind', 'aria-label': 'Sync-Status', onclick: openSettings });
+  Sync.indicators.add(b);
+  Sync.paint(b);
+  return b;
 }
 
 /* ---------------- Song-Editor ---------------- */
@@ -563,21 +664,31 @@ function save(now = false) {
   current.updatedAt = Date.now();
   clearTimeout(saveTimer);
   const s = current;
-  const doIt = () => DB.putSong(s).catch((e) => toast('Speichern fehlgeschlagen: ' + e.message));
+  const doIt = () => { saveTimer = null; return DB.putSong(s).then(() => Sync.schedule()).catch((e) => toast('Speichern fehlgeschlagen: ' + e.message)); };
   if (now) return doIt();
   saveTimer = setTimeout(doIt, 400);
 }
 
+// Ein anderes Gerät hat etwas geändert: Ansicht auffrischen, ohne laufende Eingaben zu stören
+function onRemoteChanges(ids) {
+  if (!current) { if (!location.hash.startsWith('#/song/')) renderHome(); return; }
+  if (!ids.has(current.id)) return;
+  const typing = document.activeElement && document.activeElement.closest('#app') && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if (typing || saveTimer || Engine.recording || Engine.playing) return; // lokale Version gewinnt beim nächsten Speichern
+  const y = window.scrollY;
+  renderSong(current.id).then(() => window.scrollTo(0, y));
+}
+
 async function renderSong(id, opts = {}) {
   const song = await DB.getSong(id);
-  if (!song) { go('#/'); return; }
+  if (!song) { current = null; go('#/'); return; }
   song.blocks.forEach((b) => delete b._editing);
   current = song;
   const app = $('#app');
   app.innerHTML = '';
 
   const title = h('input', {
-    class: 'title-input', value: song.title, placeholder: 'Songtitel',
+    class: 'title-input', value: song.title, placeholder: song.isIdea ? 'Idee (Titel optional)' : 'Songtitel',
     oninput: (e) => { song.title = e.target.value; save(); },
   });
 
@@ -586,8 +697,9 @@ async function renderSong(id, opts = {}) {
     h('header', { class: 'topbar' },
       h('button', { class: 'icon-btn', 'aria-label': 'Zurück', onclick: () => go('#/') }, '‹'),
       title,
+      syncButton(),
       h('button', { class: 'icon-btn', 'aria-label': 'Menü', onclick: () => songMenu(song) }, '⋯')),
-    h('main', {}, blocksEl),
+    h('main', {}, songMeta(song), blocksEl),
     h('button', { class: 'fab', 'aria-label': 'Hinzufügen', onclick: () => addMenu(song) }, '+')
   );
   renderBlocks();
@@ -597,6 +709,27 @@ async function renderSong(id, opts = {}) {
     const ta = $('textarea.free', blocksEl);
     setTimeout(() => (ta || title).focus(), 60);
   }
+  if (opts.autoRecord) {
+    const btn = $(`[data-id="${opts.autoRecord}"] .round.rec`);
+    if (btn) btn.click();
+  }
+}
+
+// Zeile unter dem Titel: Idee-Hinweis bzw. Capo
+function songMeta(song) {
+  if (song.isIdea) {
+    return h('div', { class: 'meta-row' },
+      h('span', { class: 'pill' }, 'Idee'),
+      h('div', { class: 'spacer' }),
+      h('button', { class: 'btn small', onclick: () => moveIdeaMenu(song) }, 'In Song verschieben'));
+  }
+  const capo = h('select', {
+    class: 'capo-select', 'aria-label': 'Capo',
+    onchange: (e) => { song.capo = +e.target.value || 0; save(); },
+  }, h('option', { value: 0 }, 'Kein Capo'),
+  Array.from({ length: 12 }, (_, i) => h('option', { value: i + 1 }, `Capo ${i + 1}. Bund`)));
+  capo.value = String(song.capo || 0);
+  return h('div', { class: 'meta-row' }, capo);
 }
 
 function renderBlocks(focusId) {
@@ -638,10 +771,42 @@ function addMenu(song) {
 }
 
 function songMenu(song) {
-  Sheet.menu(song.title || 'Ohne Titel', [
-    { label: 'Als Text teilen / kopieren', action: () => shareText(song) },
-    { label: 'Song löschen', danger: true, action: () => Sheet.confirm('Song wirklich löschen? Aufnahmen gehen ebenfalls verloren.', 'Löschen', () => deleteSong(song)) },
-  ]);
+  const items = [];
+  if (song.isIdea) {
+    items.push({ label: 'In Song verschieben…', action: () => moveIdeaMenu(song) });
+    items.push({ label: 'Zu eigenem Song machen', action: () => { song.isIdea = false; save(true); renderSong(song.id); toast('Ist jetzt ein Song'); } });
+  } else {
+    items.push({ label: 'Zurück in die Ideen', action: () => { song.isIdea = true; save(true); renderSong(song.id); } });
+  }
+  items.push({ label: 'Als Text teilen / kopieren', action: () => shareText(song) });
+  items.push({ label: song.isIdea ? 'Idee löschen' : 'Song löschen', danger: true, action: () => Sheet.confirm('Wirklich löschen? Aufnahmen gehen ebenfalls verloren.', 'Löschen', () => deleteSong(song)) });
+  Sheet.menu(song.title || (song.isIdea ? 'Idee' : 'Ohne Titel'), items);
+}
+
+// Idee an einen bestehenden Song anhängen (Inhalt wandert mit, Idee verschwindet)
+async function moveIdeaMenu(idea) {
+  const songs = (await DB.allSongs()).filter((s) => !s.isIdea).sort((a, b) => b.updatedAt - a.updatedAt);
+  const items = songs.map((s) => ({ label: s.title || 'Ohne Titel', action: () => moveIdeaInto(idea, s.id) }));
+  items.unshift({ label: '+ Neuer Song aus dieser Idee', action: () => { idea.isIdea = false; save(true); renderSong(idea.id); toast('Neuer Song erstellt'); } });
+  Sheet.menu('In welchen Song?', items);
+}
+
+async function moveIdeaInto(idea, songId) {
+  await save(true);
+  const target = await DB.getSong(songId);
+  if (!target) return;
+  const blocks = idea.blocks.filter((b) => !(b.type === 'text' && !b.text.trim()));
+  if (idea.title && blocks[0]) {
+    if (blocks[0].type === 'text') blocks[0] = { ...blocks[0], text: idea.title + '\n' + blocks[0].text };
+    else blocks.unshift({ id: uid(), type: 'text', text: idea.title });
+  }
+  target.blocks.push(...blocks);
+  target.updatedAt = Date.now();
+  await DB.putSong(target);
+  await removeSongRecord(idea.id); // Audio bleibt erhalten, es gehört jetzt dem Ziel-Song
+  current = null;
+  toast(`In „${target.title || 'Ohne Titel'}“ verschoben`);
+  go('#/song/' + target.id);
 }
 
 async function shareText(song) {
@@ -652,9 +817,23 @@ async function shareText(song) {
   try { await navigator.clipboard.writeText(text); toast('In die Zwischenablage kopiert'); } catch { toast('Kopieren nicht möglich'); }
 }
 
+// Song aus der lokalen DB löschen und die Löschung für den Sync merken
+async function removeSongRecord(id) {
+  await DB.deleteSong(id);
+  await DB.putTomb({ id, deletedAt: Date.now() });
+  Sync.schedule();
+}
+
+async function removeAudio(audioId) {
+  await DB.deleteAudio(audioId);
+  Engine.buffers.delete(audioId);
+  Sync.removeAudio(audioId);
+}
+
 async function deleteSong(song) {
-  for (const b of song.blocks) if (b.type === 'audio') for (const t of b.tracks) await DB.deleteAudio(t.audioId);
-  await DB.deleteSong(song.id);
+  clearTimeout(saveTimer);
+  for (const b of song.blocks) if (b.type === 'audio') for (const t of b.tracks) await removeAudio(t.audioId);
+  await removeSongRecord(song.id);
   current = null;
   go('#/');
 }
@@ -672,7 +851,7 @@ function blockMenu(b) {
     current.blocks.splice(i + 1, 0, copy); save(); renderBlocks(copy.id);
   } });
   items.push({ label: 'Löschen', danger: true, action: () => Sheet.confirm('Diesen Teil löschen?', 'Löschen', async () => {
-    if (b.type === 'audio') { if (Engine.ownerId === b.id) await stopAll(); for (const t of b.tracks) await DB.deleteAudio(t.audioId); }
+    if (b.type === 'audio') { if (Engine.ownerId === b.id) await stopAll(); for (const t of b.tracks) await removeAudio(t.audioId); }
     current.blocks.splice(current.blocks.indexOf(b), 1); save(); renderBlocks();
   }) });
   Sheet.menu(b.label || 'Notiz', items);
@@ -926,7 +1105,7 @@ async function finishRecording() {
   const res = await Engine.stopRecording();
   if (!res || !b) return;
   const audioId = uid();
-  await DB.putAudio({ id: audioId, blob: res.blob });
+  await DB.putAudio({ id: audioId, blob: res.blob, uploaded: false, createdAt: Date.now() });
   Engine.buffers.set(audioId, res.buf);
   b.tracks.push({ id: uid(), name: `Spur ${b.tracks.length + 1}`, audioId, volume: 1, muted: false, offset: res.offsetMs, duration: res.duration });
   save(true);
@@ -1023,8 +1202,7 @@ function renderTrack(b, t, i) {
         { label: 'Spur löschen', danger: true, action: () => Sheet.confirm(`„${t.name}“ löschen?`, 'Löschen', async () => {
           if (Engine.ownerId === b.id) await stopAll();
           b.tracks.splice(b.tracks.indexOf(t), 1);
-          await DB.deleteAudio(t.audioId);
-          Engine.buffers.delete(t.audioId);
+          await removeAudio(t.audioId);
           save(true); renderBlocks();
         }) },
       ]) }, '⋯')),
@@ -1048,7 +1226,7 @@ async function route() {
   Sheet.close();
   if (Engine.recording) await finishRecording();
   if (Engine.playing) await stopAll();
-  if (current) await save(true);
+  if (current && saveTimer) await save(true); // nur ungespeicherte Änderungen sichern
   audioUIs.clear();
   const m = location.hash.match(/^#\/song\/(.+)$/);
   window.scrollTo(0, 0);
@@ -1057,8 +1235,10 @@ async function route() {
 }
 
 window.addEventListener('hashchange', route);
-document.addEventListener('visibilitychange', () => { if (document.hidden && current) save(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && current && saveTimer) save(true); });
 window.addEventListener('resize', () => document.querySelectorAll('textarea.free, textarea.lyrics-edit').forEach(autoGrow));
+
+Sync.init().catch((e) => console.warn(e));
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
