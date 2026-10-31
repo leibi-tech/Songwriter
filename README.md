@@ -36,8 +36,8 @@ Mikrofon-Zugriff funktioniert nur über `https://` oder `localhost`.
 
 ## Aufs Handy
 
-Über GitHub Pages veröffentlichen (Workflow liegt in `.github/workflows/pages.yml`):
-Repo → Settings → Pages → Source: **GitHub Actions**, dann nach `main` mergen.
+Über GitHub Pages: Repo → Settings → Pages → Source **Deploy from a branch**, Branch **main**, Ordner **/ (root)** → Save.
+Die App läuft dann unter `https://leibi-tech.github.io/Songwriter/`.
 Die Seite am Handy öffnen → Teilen → **Zum Home-Bildschirm**.
 
 ## Cloud-Sync einrichten (einmalig, ca. 10 Minuten)
