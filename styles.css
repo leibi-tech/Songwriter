@@ -85,35 +85,36 @@ main { padding: 14px 14px calc(env(safe-area-inset-bottom) + 110px); max-width: 
 /* ---------- Blöcke ---------- */
 .block {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  margin-bottom: 12px; overflow: hidden;
+  margin-bottom: 8px; overflow: hidden;
 }
 .block-head {
-  display: flex; align-items: center; gap: 6px; padding: 6px 6px 0 14px;
+  display: flex; align-items: center; gap: 4px; padding: 2px 4px 0 12px;
 }
 .block-label {
   flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
-  font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent);
-  padding: 8px 0;
+  font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent);
+  padding: 4px 0;
 }
-.block-type { font-size: 12px; color: var(--muted); }
-.block-body { padding: 4px 14px 14px; }
+.block-type { font-size: 11px; color: var(--muted); }
+.block-head .icon-btn { width: 30px; height: 30px; font-size: 16px; }
+.block-body { padding: 0 12px 8px; }
 .block.text-block { background: transparent; border-color: transparent; }
 .block.text-block .block-body { padding: 0 2px; }
 .block.text-block .block-head { padding-left: 2px; }
 
 textarea.free {
   width: 100%; border: 0; outline: 0; background: transparent; resize: none; overflow: hidden;
-  font-size: 17px; line-height: 1.55; min-height: 2em; padding: 4px 0;
+  font-size: 15px; line-height: 1.45; min-height: 1.6em; padding: 2px 0;
 }
 textarea.free::placeholder { color: var(--muted); }
 
 /* Vers / Refrain mit Akkorden */
-.lyrics-view { font-size: 17px; line-height: 1.35; cursor: text; min-height: 1.6em; }
-.lyrics-view .line { display: flex; flex-wrap: wrap; align-items: flex-end; margin-bottom: 6px; }
-.lyrics-view .line.empty-line { height: 0.8em; }
+.lyrics-view { font-size: 15px; line-height: 1.25; cursor: text; min-height: 1.6em; }
+.lyrics-view .line { display: flex; flex-wrap: wrap; align-items: flex-end; margin-bottom: 2px; }
+.lyrics-view .line.empty-line { height: 0.5em; }
 .seg { display: inline-flex; flex-direction: column; white-space: pre; }
-.seg .ch { color: var(--chord); font-weight: 700; font-size: 14px; min-height: 1.2em; padding-right: 6px; }
-.seg .ly { min-height: 1.3em; }
+.seg .ch { color: var(--chord); font-weight: 700; font-size: 11px; line-height: 1.1; min-height: 1.1em; padding-right: 4px; }
+.seg .ly { min-height: 1.25em; }
 .line.no-chords .seg .ch { display: none; }
 .placeholder { color: var(--muted); }
 
@@ -160,10 +161,14 @@ textarea.tab-edit {
 .tab-wrap { position: relative; }
 .tab-wrap textarea.tab-edit { padding-right: 52px; }
 pre.tab-view {
-  margin: 0; padding: 10px 48px 10px 10px; border-radius: 10px; background: var(--bg); border: 1px solid transparent;
-  font-family: var(--mono); font-size: 14px; line-height: 1.35; white-space: pre; overflow-x: auto; cursor: pointer; min-height: 2em;
+  margin: 0; padding: 6px 30px 6px 10px; border-radius: 10px; background: var(--surface); border: 1px solid transparent;
+  font-family: var(--mono); font-size: 13px; line-height: 1.2; white-space: pre; overflow-x: auto; cursor: pointer; min-height: 2em;
 }
 .tab-corner { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; }
+pre.tab-view + .tab-corner { top: 2px; right: 2px; width: 26px; height: 26px; color: var(--muted); }
+.block.tab-block.compact { background: transparent; border-color: transparent; }
+.block.compact .block-head { display: none; }
+.block.compact .block-body { padding: 0; }
 .tab-corner.primary { background: var(--accent); color: var(--accent-ink); }
 .pad { margin-top: 10px; display: grid; gap: 8px; }
 .strings { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
