@@ -369,8 +369,8 @@ const Engine = {
     }
     const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
     buf.copyToChannel(data, 0);
-    const blob = encodeWav([data], ctx.sampleRate);
-    return { blob, buf, offsetMs, duration: data.length / ctx.sampleRate };
+    const { blob, format } = await encodeAudio([data], ctx.sampleRate, 64);
+    return { blob, format, buf, offsetMs, duration: data.length / ctx.sampleRate };
   },
 
   async mixdown(tracks) {
@@ -393,9 +393,27 @@ const Engine = {
       s.start(Math.max(0, o), Math.max(0, -o));
     }
     const out = await off.startRendering();
-    return encodeWav([out.getChannelData(0), out.getChannelData(1)], sr);
+    return encodeAudio([out.getChannelData(0), out.getChannelData(1)], sr, 128);
   },
 };
+
+const AUDIO_MIME = { mp3: 'audio/mpeg', wav: 'audio/wav' };
+
+// Aufnahme als MP3 speichern (ca. 0,5 MB/Minute statt 5 MB als WAV). Fällt bei Problemen auf WAV zurück.
+let mp3Worker = null;
+function encodeAudio(channels, sampleRate, kbps) {
+  const wav = () => ({ blob: encodeWav(channels, sampleRate), format: 'wav' });
+  if (!window.Worker || ![32000, 44100, 48000].includes(sampleRate)) return Promise.resolve(wav());
+  return new Promise((resolve) => {
+    try {
+      mp3Worker = mp3Worker || new Worker('mp3-worker.js');
+      const timer = setTimeout(() => resolve(wav()), 60000);
+      mp3Worker.onmessage = (e) => { clearTimeout(timer); resolve(e.data.ok ? { blob: e.data.blob, format: 'mp3' } : wav()); };
+      mp3Worker.onerror = () => { clearTimeout(timer); mp3Worker = null; resolve(wav()); };
+      mp3Worker.postMessage({ channels, sampleRate, kbps });
+    } catch { resolve(wav()); }
+  });
+}
 
 function encodeWav(channels, sampleRate) {
   const n = channels[0].length, nc = channels.length;
@@ -824,15 +842,15 @@ async function removeSongRecord(id) {
   Sync.schedule();
 }
 
-async function removeAudio(audioId) {
-  await DB.deleteAudio(audioId);
-  Engine.buffers.delete(audioId);
-  Sync.removeAudio(audioId);
+async function removeAudio(track) {
+  await DB.deleteAudio(track.audioId);
+  Engine.buffers.delete(track.audioId);
+  Sync.removeAudio(track.audioId, track.format);
 }
 
 async function deleteSong(song) {
   clearTimeout(saveTimer);
-  for (const b of song.blocks) if (b.type === 'audio') for (const t of b.tracks) await removeAudio(t.audioId);
+  for (const b of song.blocks) if (b.type === 'audio') for (const t of b.tracks) await removeAudio(t);
   await removeSongRecord(song.id);
   current = null;
   go('#/');
@@ -851,7 +869,7 @@ function blockMenu(b) {
     current.blocks.splice(i + 1, 0, copy); save(); renderBlocks(copy.id);
   } });
   items.push({ label: 'Löschen', danger: true, action: () => Sheet.confirm('Diesen Teil löschen?', 'Löschen', async () => {
-    if (b.type === 'audio') { if (Engine.ownerId === b.id) await stopAll(); for (const t of b.tracks) await removeAudio(t.audioId); }
+    if (b.type === 'audio') { if (Engine.ownerId === b.id) await stopAll(); for (const t of b.tracks) await removeAudio(t); }
     current.blocks.splice(current.blocks.indexOf(b), 1); save(); renderBlocks();
   }) });
   Sheet.menu(b.label || 'Notiz', items);
@@ -1105,9 +1123,9 @@ async function finishRecording() {
   const res = await Engine.stopRecording();
   if (!res || !b) return;
   const audioId = uid();
-  await DB.putAudio({ id: audioId, blob: res.blob, uploaded: false, createdAt: Date.now() });
+  await DB.putAudio({ id: audioId, blob: res.blob, format: res.format, uploaded: false, createdAt: Date.now() });
   Engine.buffers.set(audioId, res.buf);
-  b.tracks.push({ id: uid(), name: `Spur ${b.tracks.length + 1}`, audioId, volume: 1, muted: false, offset: res.offsetMs, duration: res.duration });
+  b.tracks.push({ id: uid(), name: `Spur ${b.tracks.length + 1}`, audioId, format: res.format, volume: 1, muted: false, offset: res.offsetMs, duration: res.duration });
   save(true);
   renderBlocks();
   toast(b.tracks.length > 1 ? 'Spur hinzugefügt – mit ▶ alles zusammen anhören' : 'Aufnahme gespeichert');
@@ -1174,8 +1192,8 @@ function renderAudio(b) {
     b.tracks.length > 1 ? h('div', { class: 'row', style: 'margin-top:10px' },
       h('button', { class: 'btn small', onclick: async () => {
         toast('Mix wird erstellt…');
-        const blob = await Engine.mixdown(b.tracks);
-        if (blob) shareOrDownload(blob, `${(current.title || 'Song').replace(/[^\w\- äöüÄÖÜ]/g, '')} - ${b.label}.wav`);
+        const mix = await Engine.mixdown(b.tracks);
+        if (mix) shareOrDownload(mix.blob, `${(current.title || 'Song').replace(/[^\w\- äöüÄÖÜ]/g, '')} - ${b.label}.${mix.format}`);
       } }, 'Mix exportieren')) : null,
   ].filter(Boolean));
   requestAnimationFrame(update);
@@ -1198,11 +1216,11 @@ function renderTrack(b, t, i) {
       h('button', { class: 'icon-btn', 'aria-label': 'Spur-Optionen', onclick: () => Sheet.menu(t.name, [
         { label: 'Nur diese Spur anhören', action: async () => { await stopAll(); await Engine.play([{ ...t, muted: false, offset: 0 }], b.id); } },
         { label: 'Timing verschieben', action: () => offsetRow.classList.toggle('hidden') },
-        { label: 'Als Datei teilen', action: async () => { const r = await DB.getAudio(t.audioId); if (r) shareOrDownload(r.blob, `${t.name}.wav`); } },
+        { label: 'Als Datei teilen', action: async () => { const r = await DB.getAudio(t.audioId); if (r) shareOrDownload(r.blob, `${t.name}.${t.format || 'wav'}`); } },
         { label: 'Spur löschen', danger: true, action: () => Sheet.confirm(`„${t.name}“ löschen?`, 'Löschen', async () => {
           if (Engine.ownerId === b.id) await stopAll();
           b.tracks.splice(b.tracks.indexOf(t), 1);
-          await removeAudio(t.audioId);
+          await removeAudio(t);
           save(true); renderBlocks();
         }) },
       ]) }, '⋯')),

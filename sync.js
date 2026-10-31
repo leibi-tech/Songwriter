@@ -3,7 +3,7 @@
 /* =========================================================
    Cloud-Sync über Supabase
    - Songs: Tabelle "songs" (eine Zeile pro Song, Inhalt als JSON)
-   - Aufnahmen: privater Storage-Bucket "audio", Pfad <user-id>/<audio-id>.wav
+   - Aufnahmen: privater Storage-Bucket "audio", Pfad <user-id>/<audio-id>.mp3 (ältere Aufnahmen .wav)
    - Konflikte: pro Song gewinnt die neuere Änderung (updatedAt)
    Die App funktioniert ohne Sync ganz normal; Sync läuft im Hintergrund.
    ========================================================= */
@@ -99,7 +99,7 @@ const Sync = {
     if (this._again) { this._again = false; this.schedule(300); }
   },
 
-  path(audioId) { return `${this.user.id}/${audioId}.wav`; },
+  path(audioId, format) { return `${this.user.id}/${audioId}.${format || 'wav'}`; },
 
   // Ein kompletter Abgleich. Gibt die IDs lokal geänderter Songs zurück.
   async syncOnce() {
@@ -159,13 +159,13 @@ const Sync = {
 
     // 4) Fehlende Aufnahmen herunterladen, nicht mehr benutzte lokal aufräumen
     const all = await DB.allSongs();
-    const used = new Set();
-    for (const s of all) for (const b of s.blocks) if (b.type === 'audio') for (const t of b.tracks) used.add(t.audioId);
-    for (const id of used) {
+    const used = new Map(); // audioId -> Format
+    for (const s of all) for (const b of s.blocks) if (b.type === 'audio') for (const t of b.tracks) used.set(t.audioId, t.format || 'wav');
+    for (const [id, format] of used) {
       if (await DB.getAudio(id)) continue;
-      const { data: blob, error: e } = await db.storage.from('audio').download(this.path(id));
+      const { data: blob, error: e } = await db.storage.from('audio').download(this.path(id, format));
       if (e || !blob) continue; // evtl. noch nicht hochgeladen – beim nächsten Mal
-      await DB.putAudio({ id, blob: new Blob([blob], { type: 'audio/wav' }), uploaded: true, createdAt: Date.now() });
+      await DB.putAudio({ id, blob: new Blob([blob], { type: AUDIO_MIME[format] }), format, uploaded: true, createdAt: Date.now() });
     }
     const audioIds = await DB.allAudioIds();
     for (const id of audioIds) {
@@ -183,16 +183,16 @@ const Sync = {
       for (const t of b.tracks) {
         const rec = await DB.getAudio(t.audioId);
         if (!rec || rec.uploaded) continue;
-        const { error } = await this.client.storage.from('audio').upload(this.path(t.audioId), rec.blob, { upsert: true, contentType: 'audio/wav' });
+        const { error } = await this.client.storage.from('audio').upload(this.path(t.audioId, t.format), rec.blob, { upsert: true, contentType: AUDIO_MIME[t.format || 'wav'] });
         if (error) throw error;
         await DB.putAudio({ ...rec, uploaded: true });
       }
     }
   },
 
-  removeAudio(audioId) {
+  removeAudio(audioId, format) {
     if (!this.client || !this.user || !navigator.onLine) return;
-    this.client.storage.from('audio').remove([this.path(audioId)]).catch(() => {});
+    this.client.storage.from('audio').remove([this.path(audioId, format)]).catch(() => {});
   },
 
   setState(s) {

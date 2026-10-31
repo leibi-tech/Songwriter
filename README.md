@@ -42,7 +42,9 @@ Die Seite am Handy öffnen → Teilen → **Zum Home-Bildschirm**.
 
 ## Cloud-Sync einrichten (einmalig, ca. 10 Minuten)
 
-Der Sync läuft über [Supabase](https://supabase.com) (Gratis-Stufe reicht: 500 MB Datenbank, 1 GB für Aufnahmen ≈ 3 Stunden WAV).
+Der Sync läuft über [Supabase](https://supabase.com). Die Gratis-Stufe reicht: 500 MB Datenbank und 1 GB für Aufnahmen. Aufnahmen werden als MP3 gespeichert (ca. 0,5 MB/Minute), 1 GB reicht also für über 30 Stunden.
+
+Für dieses Repo ist die Verbindung in `config.js` bereits eingetragen.
 
 1. Bei supabase.com ein kostenloses Konto anlegen → **New project** (Region z. B. Frankfurt), Passwort notieren.
 2. Im Projekt **SQL Editor** → **New query** → Inhalt von `supabase/schema.sql` einfügen → **Run**.
@@ -50,7 +52,7 @@ Der Sync läuft über [Supabase](https://supabase.com) (Gratis-Stufe reicht: 500
 3. **Authentication → URL Configuration → Site URL** auf die Adresse der App setzen (z. B. die GitHub-Pages-URL),
    damit der Bestätigungslink aus der E-Mail richtig landet.
    Wer keine Bestätigungs-Mail will: **Authentication → Sign In / Providers → Email → „Confirm email“ aus**.
-4. **Project Settings → API**: *Project URL* und den *anon public* Key kopieren und
+4. **Project Settings → API**: *Project URL* und den *publishable* bzw. *anon public* Key kopieren (nie den *secret*/*service_role* Key) und
    - entweder in `config.js` eintragen (gilt dann für alle Geräte automatisch),
    - oder in der App unter ⚙︎ → Cloud-Sync eingeben.
 5. In der App ⚙︎ → **Konto erstellen**, danach auf jedem weiteren Gerät mit derselben E-Mail **Anmelden**.
@@ -70,5 +72,6 @@ So funktioniert der Abgleich:
 | `sync.js` | Cloud-Sync mit Supabase |
 | `config.js` | Supabase-Verbindung (optional) |
 | `supabase/schema.sql` | Datenbank-Setup für Supabase |
-| `vendor/supabase.js` | Supabase-Bibliothek v2.45.4 (lokal, damit die App offline startet) |
+| `vendor/supabase.js` | Supabase-Bibliothek v2.117.3 (lokal, damit die App offline startet) |
+| `vendor/lame.min.js`, `mp3-worker.js` | MP3-Umwandlung der Aufnahmen (lamejs 1.2.1) |
 | `sw.js` | Offline-Cache |
