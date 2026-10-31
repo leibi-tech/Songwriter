@@ -1016,14 +1016,16 @@ function renderChords(b) {
 
 /* --- Gitarren-Tab --- */
 const SAVE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
-const EDIT_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const EDIT_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 // Eingabe-Reihenfolge: tiefe E-Saite zuerst (Indizes in STRINGS)
 const STRING_ORDER = [5, 4, 3, 2, 1, 0];
 
 function renderTab(b) {
   const body = h('div');
+  let shell = null;
   const draw = () => {
     body.innerHTML = '';
+    shell.classList.toggle('compact', !b._editing);
     if (!b._editing) {
       const edit = () => { b._editing = true; draw(); };
       const editBtn = h('button', { class: 'icon-btn tab-corner', 'aria-label': 'Tab bearbeiten', title: 'Bearbeiten', onclick: (e) => { e.stopPropagation(); edit(); } });
@@ -1034,8 +1036,9 @@ function renderTab(b) {
     }
     body.append(...tabEditor(b, () => { b._editing = false; save(); draw(); }));
   };
+  shell = blockShell(b, 'Tab', body);
   draw();
-  return blockShell(b, 'Tab', body);
+  return shell;
 }
 
 function tabEditor(b, done) {
