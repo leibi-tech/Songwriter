@@ -770,7 +770,7 @@ function addMenu(song) {
   const add = (type, name) => {
     Sheet.close();
     const b = makeBlock(type, song, name);
-    if (type === 'section') b._editing = true;
+    if (type === 'section' || type === 'tab') b._editing = true;
     song.blocks.push(b);
     save();
     renderBlocks(b.id);
@@ -1015,10 +1015,32 @@ function renderChords(b) {
 }
 
 /* --- Gitarren-Tab --- */
+const SAVE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+const EDIT_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+// Eingabe-Reihenfolge: tiefe E-Saite zuerst (Indizes in STRINGS)
+const STRING_ORDER = [5, 4, 3, 2, 1, 0];
+
 function renderTab(b) {
   const body = h('div');
+  const draw = () => {
+    body.innerHTML = '';
+    if (!b._editing) {
+      const edit = () => { b._editing = true; draw(); };
+      const editBtn = h('button', { class: 'icon-btn tab-corner', 'aria-label': 'Tab bearbeiten', title: 'Bearbeiten', onclick: (e) => { e.stopPropagation(); edit(); } });
+      editBtn.innerHTML = EDIT_ICON;
+      const view = h('pre', { class: 'tab-view', onclick: edit }, b.text || '');
+      body.append(h('div', { class: 'tab-wrap' }, view, editBtn));
+      return;
+    }
+    body.append(...tabEditor(b, () => { b._editing = false; save(); draw(); }));
+  };
+  draw();
+  return blockShell(b, 'Tab', body);
+}
+
+function tabEditor(b, done) {
   const undo = [];
-  let string = 0;
+  let string = STRING_ORDER[0];
   let chordMode = false;
   let pending = {}; // Saite -> Bund (für Akkord-Modus)
 
@@ -1029,6 +1051,8 @@ function renderTab(b) {
   ta.value = b.text || '';
   const fit = () => { ta.rows = Math.max(7, ta.value.split('\n').length + 1); };
   fit();
+  const saveBtn = h('button', { class: 'icon-btn tab-corner primary', 'aria-label': 'Tab speichern', title: 'Speichern', onclick: done });
+  saveBtn.innerHTML = SAVE_ICON;
 
   // Die letzten 6 Tab-Zeilen finden (oder neue anlegen)
   const system = () => {
@@ -1072,10 +1096,13 @@ function renderTab(b) {
   const strBtns = h('div', { class: 'strings' });
   const drawStrings = () => {
     strBtns.innerHTML = '';
-    STRINGS.forEach((s, i) => strBtns.append(h('button', {
-      class: (i === string ? 'on' : '') + (pending[i] != null ? ' pending' : ''),
-      onclick: () => { string = i; drawStrings(); },
-    }, pending[i] != null ? `${s}:${pending[i]}` : s)));
+    STRING_ORDER.forEach((i) => {
+      const s = STRINGS[i];
+      strBtns.append(h('button', {
+        class: (i === string ? 'on' : '') + (pending[i] != null ? ' pending' : ''),
+        onclick: () => { string = i; drawStrings(); },
+      }, pending[i] != null ? `${s}:${pending[i]}` : s));
+    });
   };
   drawStrings();
 
@@ -1083,15 +1110,19 @@ function renderTab(b) {
   for (let f = 0; f <= 15; f++) {
     frets.append(h('button', {
       onclick: () => {
-        if (chordMode) { pending[string] = f; if (string < 5) string++; drawStrings(); }
-        else commit({ [string]: f });
+        if (chordMode) {
+          pending[string] = f;
+          const k = STRING_ORDER.indexOf(string);
+          if (k < STRING_ORDER.length - 1) string = STRING_ORDER[k + 1];
+          drawStrings();
+        } else commit({ [string]: f });
       },
     }, String(f)));
   }
-  const chordBtn = h('button', { class: 'btn small toggle', onclick: () => { chordMode = !chordMode; pending = {}; string = 0; chordBtn.classList.toggle('on', chordMode); setBtn.classList.toggle('hidden', !chordMode); drawStrings(); } }, 'Mehrere Saiten');
-  const setBtn = h('button', { class: 'btn small primary hidden', onclick: () => { if (Object.keys(pending).length) { commit(pending); pending = {}; string = 0; drawStrings(); } } }, 'Setzen');
+  const chordBtn = h('button', { class: 'btn small toggle', onclick: () => { chordMode = !chordMode; pending = {}; string = STRING_ORDER[0]; chordBtn.classList.toggle('on', chordMode); setBtn.classList.toggle('hidden', !chordMode); drawStrings(); } }, 'Mehrere Saiten');
+  const setBtn = h('button', { class: 'btn small primary hidden', onclick: () => { if (Object.keys(pending).length) { commit(pending); pending = {}; string = STRING_ORDER[0]; drawStrings(); } } }, 'Setzen');
   const padWrap = h('div', { class: 'pad' },
-    h('div', { class: 'hint', style: 'margin:0' }, 'Saite wählen, dann Bund antippen – wird hinten angehängt. Oben kannst du frei editieren.'),
+    h('div', { class: 'hint', style: 'margin:0' }, 'Saite wählen, dann Bund antippen – wird hinten angehängt. Bei „Mehrere Saiten“ geht es von E nach e. Oben kannst du frei editieren.'),
     strBtns, frets,
     h('div', { class: 'row' },
       h('button', { class: 'btn small', onclick: () => commit({}) }, '– Pause'),
@@ -1100,8 +1131,11 @@ function renderTab(b) {
       h('button', { class: 'btn small', onclick: newLine }, 'Neue Zeile'),
       chordBtn, setBtn));
   const padToggle = h('button', { class: 'btn small', onclick: () => { padWrap.classList.toggle('hidden'); padToggle.textContent = padWrap.classList.contains('hidden') ? 'Eingabehilfe zeigen' : 'Eingabehilfe ausblenden'; } }, 'Eingabehilfe ausblenden');
-  body.append(ta, h('div', { class: 'row', style: 'margin-top:8px' }, padToggle), padWrap);
-  return blockShell(b, 'Tab', body);
+  return [
+    h('div', { class: 'tab-wrap' }, ta, saveBtn),
+    h('div', { class: 'row', style: 'margin-top:8px' }, padToggle, h('div', { class: 'spacer' }), h('button', { class: 'btn small primary', onclick: done }, 'Speichern')),
+    padWrap,
+  ];
 }
 
 /* --- Aufnahme mit mehreren Spuren --- */
