@@ -104,7 +104,7 @@ main { padding: 14px 14px calc(env(safe-area-inset-bottom) + 110px); max-width: 
 
 textarea.free {
   width: 100%; border: 0; outline: 0; background: transparent; resize: none; overflow: hidden;
-  font-size: 17px; line-height: 1.55; min-height: 2em; padding: 4px 0;
+  font-size: 15px; line-height: 1.45; min-height: 1.6em; padding: 2px 0;
 }
 textarea.free::placeholder { color: var(--muted); }
 
@@ -161,7 +161,7 @@ textarea.tab-edit {
 .tab-wrap { position: relative; }
 .tab-wrap textarea.tab-edit { padding-right: 52px; }
 pre.tab-view {
-  margin: 0; padding: 6px 30px 6px 10px; border-radius: 10px; background: var(--bg); border: 1px solid transparent;
+  margin: 0; padding: 6px 30px 6px 10px; border-radius: 10px; background: var(--surface); border: 1px solid transparent;
   font-family: var(--mono); font-size: 13px; line-height: 1.2; white-space: pre; overflow-x: auto; cursor: pointer; min-height: 2em;
 }
 .tab-corner { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; }
