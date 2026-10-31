@@ -157,6 +157,14 @@ textarea.tab-edit {
   padding: 10px; font-family: var(--mono); font-size: 14px; line-height: 1.35;
   white-space: pre; overflow-x: auto; overflow-wrap: normal; resize: none; min-height: 9em;
 }
+.tab-wrap { position: relative; }
+.tab-wrap textarea.tab-edit { padding-right: 52px; }
+pre.tab-view {
+  margin: 0; padding: 10px 48px 10px 10px; border-radius: 10px; background: var(--bg); border: 1px solid transparent;
+  font-family: var(--mono); font-size: 14px; line-height: 1.35; white-space: pre; overflow-x: auto; cursor: pointer; min-height: 2em;
+}
+.tab-corner { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; }
+.tab-corner.primary { background: var(--accent); color: var(--accent-ink); }
 .pad { margin-top: 10px; display: grid; gap: 8px; }
 .strings { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .strings button {

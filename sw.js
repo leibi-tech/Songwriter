@@ -1,4 +1,4 @@
-const CACHE = 'songwriter-v3';
+const CACHE = 'songwriter-v4';
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'sync.js', 'config.js', 'vendor/supabase.js', 'vendor/lame.min.js', 'mp3-worker.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
