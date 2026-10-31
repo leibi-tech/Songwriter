@@ -15,7 +15,7 @@ Notiz-App fürs Songschreiben – läuft im Handy-Browser und lässt sich wie ei
   - **Gitarren-Tab** – frei editierbar oder per Eingabehilfe: Saite wählen, Bund antippen.
     „Mehrere Saiten“ für Griffe in einer Spalte.
   - **Aufnahme** – ● nimmt auf. Nochmal ● nimmt eine **zweite Spur** auf, während die erste läuft (Overdub).
-    Pro Spur: stumm, Lautstärke, Timing verschieben, als Datei teilen. „Mix exportieren“ ergibt eine WAV-Datei.
+    Pro Spur: stumm, Lautstärke, Timing verschieben, als Datei teilen. „Mix exportieren“ ergibt eine MP3-Datei.
 - Teile verschieben, duplizieren, löschen (⋯), Song als Text teilen, Suche auf der Startseite.
 - Alles wird lokal gespeichert und funktioniert offline. Mit **Cloud-Sync** (optional, Supabase) sind Songs,
   Ideen und Aufnahmen auf allen Geräten gleich.
